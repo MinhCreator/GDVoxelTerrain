@@ -63,7 +63,10 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
-
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '4.0.x'
 
       - name: Install dependencies
         run: |
