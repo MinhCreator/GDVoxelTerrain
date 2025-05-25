@@ -85,8 +85,8 @@ jobs:
               libudev-dev \
               libxi-dev \
               libxrandr-dev \
-              libwayland-dev
-      
+              libwayland-dev \
+              libboost-all-dev
       - name: Install mingw64
         if: ${{ startsWith(matrix.identifier, 'windows-') }}
         run: |
