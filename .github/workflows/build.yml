@@ -53,7 +53,16 @@ jobs:
         uses: jwlawson/actions-setup-cmake@v2
         with:
           cmake-version: '4.0.x'
-
+      
+      - name: Setup MSVC    
+        uses: TheMrMilchmann/setup-msvc-dev@v3
+        with:
+            arch: x64
+      - name: Setup MSVC for x86
+        uses: TheMrMilchmann/setup-msvc-dev@v3
+        with:
+            arch: x86
+      
       - name: install dependencies
         shell: powershell
         run: |
@@ -103,7 +112,7 @@ jobs:
           mkdir -p "$ARTIFACT_DIR"
           ZIP_NAME="GD_Voxel_Terrain_Extension_${{ matrix.identifier }}.zip"
           cd "$PROJECT_DIR"
-          zip -r "$ARTIFACT_DIR/$ZIP_NAME" .
+          7zip -r "$ARTIFACT_DIR/$ZIP_NAME" .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
