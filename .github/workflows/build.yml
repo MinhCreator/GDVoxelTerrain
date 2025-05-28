@@ -1,8 +1,11 @@
-name: 🛠️ Builds
+name: 🛠️ Builds GDExtension
 on:
   release:
     types: [created]
-
+  
+  schedule:
+    - cron: "0 5 1,3,5,7,9,11,13,15,17,19,21,23,25,27,29 * *"
+  
   workflow_dispatch:
     inputs:
       run:
@@ -10,11 +13,11 @@ on:
         required: false
 
 permissions:
-  contents: write
+    contents: write
 
 jobs:
   build:
-    runs-on: ${{ matrix.runner }}
+    runs-on: windows-2022
     name: ${{ matrix.name }}
     strategy:
       fail-fast: false
@@ -22,41 +25,24 @@ jobs:
         include:
           - identifier: linux-debug-x86_64
             name: Linux Debug x86_64
-            runner: ubuntu-22.04
             target: template_debug
             platform: linux
             arch: x86_64
           - identifier: linux-release-x86_64
             name: Linux Release x86_64
-            runner: ubuntu-22.04
             target: template_release
             platform: linux
             arch: x86_64
           - identifier: windows-debug-x86_64
             name: Windows Debug x86_64
-            runner: ubuntu-22.04
             target: template_debug
             platform: windows
             arch: x86_64
           - identifier: windows-release-x86_64
             name: Windows Release x86_64
-            runner: ubuntu-22.04
             target: template_release
             platform: windows
             arch: x86_64
-          # - identifier: android-debug-arm64v8
-          #   name: Android Debug arm64v8
-          #   runner: ubuntu-22.04
-          #   target: template_debug
-          #   platform: android
-          #   arch: arm64v8
-          # - identifier: android-release-arm64v8
-          #   name: Android Release arm64v8
-          #   runner: ubuntu-22.04
-          #   target: template_release
-          #   platform: android
-          #   arch: arm64v8
-
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
@@ -68,43 +54,14 @@ jobs:
         with:
           cmake-version: '4.0.x'
 
-      - name: Install dependencies
-        if: ${{ startsWith(matrix.runner, 'ubuntu-') }}
+      - name: install dependencies
+        shell: powershell
         run: |
-          sudo apt-get update
-          sudo apt-get install -y zip \
-          build-essential \
-              scons \
-              pkg-config \
-              libx11-dev \
-              libxcursor-dev \
-              libxinerama-dev \
-              libgl1-mesa-dev \
-              libglu1-mesa-dev \
-              libasound2-dev \
-              libpulse-dev \
-              libudev-dev \
-              libxi-dev \
-              libxrandr-dev \
-              libwayland-dev \
-              libboost-all-dev\
-              libtbb-dev
-      
-      # - name: Install mingw64
-      #   if: ${{ startsWith(matrix.identifier, 'windows-') }}
-      #   shell: powershell
-      #   run: |
-      #     Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-      #     Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
-      #     scoop install mingw
-      
-      - name: Install mingw64
-        if: ${{ startsWith(matrix.identifier, 'windows-') }}
-        run: |
-          sudo apt-get install -y mingw-w64
-          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
-          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
-
+          Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+          Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
+          scoop bucket add main
+          scoop install main/mingw
+          scoop install main/python
       - name: Install Python and SCons
         uses: actions/setup-python@v2
 
@@ -144,15 +101,15 @@ jobs:
 
           # Create platform-specific zip
           mkdir -p "$ARTIFACT_DIR"
-          ZIP_NAME="${{ matrix.identifier }}.zip"
+          ZIP_NAME="GD_Voxel_Terrain_Extension_${{ matrix.identifier }}.zip"
           cd "$PROJECT_DIR"
           zip -r "$ARTIFACT_DIR/$ZIP_NAME" .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.identifier }}
-          path: ${{ github.workspace }}/artifacts/${{ matrix.identifier }}.zip
+          name: "GD_Voxel_Terrain_Extension_${{ matrix.identifier }}"
+          path: ${{ github.workspace }}/artifacts/"GD_Voxel_Terrain_Extension_${{ matrix.identifier }}".zip
 
   release:
     runs-on: ubuntu-22.04
@@ -166,7 +123,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}  # Use existing tag from release creation
+          tag_name: "GDExtension-${{ github.ref_name }}"  # Use existing tag from release creation
           files: |
             artifacts/*.zip
         env:
