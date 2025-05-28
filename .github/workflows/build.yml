@@ -103,11 +103,11 @@ jobs:
         run: |
           PROJECT_DIR="${{ github.workspace }}/project"
           ARTIFACT_DIR="${{ github.workspace }}/artifacts"
-          sudo apt install p7zip-full
+         
           # Copy root documentation to project directory
           cp -v "${{ github.workspace }}/README.md" "$PROJECT_DIR/"
           cp -v "${{ github.workspace }}/LICENSE" "$PROJECT_DIR/"
-
+          scoop install main/7zip
           # Create platform-specific zip
           mkdir -p "$ARTIFACT_DIR"
           ZIP_NAME="GD_Voxel_Terrain_Extension_${{ matrix.identifier }}.zip"
