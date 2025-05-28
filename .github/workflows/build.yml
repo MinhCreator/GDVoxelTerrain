@@ -112,13 +112,13 @@ jobs:
           mkdir -p "$ARTIFACT_DIR"
           ZIP_NAME="GD_Voxel_Terrain_Extension_${{ matrix.identifier }}.zip"
           cd "$PROJECT_DIR"
-          7z -r "$ARTIFACT_DIR/$ZIP_NAME" .
+          7z a -tzip $ZIP_NAME.zip $ARTIFACT_DIR
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: "GD_Voxel_Terrain_Extension_${{ matrix.identifier }}"
-          path: ${{ github.workspace }}/artifacts/"GD_Voxel_Terrain_Extension_${{ matrix.identifier }}".zip
+          path: ${{ github.workspace }}/artifacts/GD_Voxel_Terrain_Extension_${{ matrix.identifier }}.zip
 
   release:
     runs-on: ubuntu-22.04
