@@ -103,7 +103,7 @@ jobs:
         run: |
           PROJECT_DIR="${{ github.workspace }}/project"
           ARTIFACT_DIR="${{ github.workspace }}/artifacts"
-          
+          sudo apt install p7zip-full
           # Copy root documentation to project directory
           cp -v "${{ github.workspace }}/README.md" "$PROJECT_DIR/"
           cp -v "${{ github.workspace }}/LICENSE" "$PROJECT_DIR/"
