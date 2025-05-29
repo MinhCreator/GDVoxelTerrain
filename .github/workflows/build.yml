@@ -102,8 +102,10 @@ jobs:
           mkdir -p "$ARTIFACT_DIR"
           ZIP_NAME="GD_Voxel_Terrain_Extension_${{ matrix.identifier }}.zip"
           cd "$PROJECT_DIR"
-          7z a -tzip $ZIP_NAME $PROJECT_DIR
-          mv $ZIP_NAME $ARTIFACT_DIR
+          
+          # Create zip
+          7z a -tzip "$ZIP_NAME" .
+          mv "$ZIP_NAME" "$ARTIFACT_DIR"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
