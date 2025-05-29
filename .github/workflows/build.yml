@@ -23,16 +23,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - identifier: linux-debug-x86_64
-            name: Linux Debug x86_64
-            target: template_debug
-            platform: linux
-            arch: x86_64
-          - identifier: linux-release-x86_64
-            name: Linux Release x86_64
-            target: template_release
-            platform: linux
-            arch: x86_64
           - identifier: windows-debug-x86_64
             name: Windows Debug x86_64
             target: template_debug
@@ -112,7 +102,8 @@ jobs:
           mkdir -p "$ARTIFACT_DIR"
           ZIP_NAME="GD_Voxel_Terrain_Extension_${{ matrix.identifier }}.zip"
           cd "$PROJECT_DIR"
-          7z a -tzip $ZIP_NAME.zip $ARTIFACT_DIR
+          7z a -tzip $ZIP_NAME $PROJECT_DIR
+          mv $ZIP_NAME $ARTIFACT_DIR
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

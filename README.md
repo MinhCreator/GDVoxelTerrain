@@ -1,6 +1,6 @@
-# Godot Voxel Terrain Plugin
+# Godot Voxel Terrain Plugin for windows
 
-![Banner Image](https://github.com/JorisAR/GDVoxelTerrain/blob/main/banner.png?raw=true)
+![Banner Image](https://github.com/MinhCreator/GDVoxelTerrain/blob/main/banner.png?raw=true)
 
 This project adds a smooth voxel terrain system to godot. 
 More precisely, it uses an octree to store an SDF, which is then meshed using a custom version of surface nets. Level of detail systems are in place for large viewing distances.
