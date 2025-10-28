@@ -83,7 +83,7 @@ jobs:
           SCONS_CACHE_LIMIT: 4096
         run: |
           scons target='${{ matrix.target }}' platform='${{ matrix.platform }}' arch='${{ matrix.arch }}' -j2
-          ls -l project/addons/*/bin/
+          ls -l demo/addons/*/bin/
 
       - name: Prepare artifacts with project files
         shell: bash
