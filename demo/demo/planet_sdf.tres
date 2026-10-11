@@ -1,4 +1,4 @@
-[gd_resource type="JarPlanetSdf" load_steps=2 format=3 uid="uid://c0w3b174vgmm7"]
+[gd_resource type="JarPlanetSdf" format=3 uid="uid://c0w3b174vgmm7"]
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_awrh7"]
 frequency = 0.001

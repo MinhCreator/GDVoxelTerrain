@@ -1,4 +1,4 @@
-[gd_resource type="JarTerrainDetail" load_steps=3 format=3 uid="uid://d0oay8xwjjuf3"]
+[gd_resource type="JarTerrainDetail" format=3 uid="uid://d0oay8xwjjuf3"]
 
 [ext_resource type="ArrayMesh" uid="uid://bnnjajeeuvc7j" path="res://demo/assets/population/details/grass_high_poly.obj" id="1_7nmpp"]
 [ext_resource type="Material" uid="uid://b0qh38gg74vur" path="res://demo/assets/population/details/grass_material.tres" id="1_mu4fp"]
