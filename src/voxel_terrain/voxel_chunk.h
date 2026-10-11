@@ -11,6 +11,7 @@
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/static_body3d.hpp>
+#include <memory>
 #include <vector>
 
 using namespace godot;
@@ -30,7 +31,7 @@ class JarVoxelChunk : public Node3D
     Bounds bounds;
 
     // node references
-    ChunkMeshData* _chunk_mesh_data = nullptr;
+    std::unique_ptr<ChunkMeshData> _chunk_mesh_data; // owned; kept for (deferred) collider builds
     MeshInstance3D* mesh_instance = nullptr;
     CollisionShape3D* collision_shape = nullptr;
     StaticBody3D* static_body = nullptr;
@@ -85,6 +86,7 @@ class JarVoxelChunk : public Node3D
     Ref<ShaderMaterial> get_material() const;
     void set_material(Ref<ShaderMaterial> p_material);
 
+    // Takes ownership of chunk_mesh_data.
     void update_chunk(JarVoxelTerrain &terrain, VoxelOctreeNode *node, ChunkMeshData *chunk_mesh_data);
     void update_collision_mesh();
     void delete_chunk();

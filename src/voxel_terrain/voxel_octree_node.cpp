@@ -9,7 +9,7 @@ VoxelOctreeNode::VoxelOctreeNode(int size) : VoxelOctreeNode(nullptr, glm::vec3(
 }
 
 VoxelOctreeNode::VoxelOctreeNode(VoxelOctreeNode *parent, const glm::vec3 center, int size)
-    : OctreeNode(parent, center, size), _isMaterialized(0b00000000)
+    : OctreeNode(parent, center, size)
 {
     if (_parent != nullptr)
     {
@@ -39,7 +39,8 @@ void VoxelOctreeNode::set_dirty(bool value)
     _isDirty = value;
 }
 
-// todo, make threadsafe. It's currently maybe fine (due to the way the scheduler is set up), but better safe than sorry.
+// Not thread-safe (accumulates in place). Only the build worker may trigger it
+// with work to do; mesh threads see a clean tree (see JarVoxelTerrain::build_worker).
 void VoxelOctreeNode::update_if_dirty()
 {
     if (!is_dirty())
@@ -49,21 +50,16 @@ void VoxelOctreeNode::update_if_dirty()
     {
         _value = 0.0f;
         _nodeColor = glm::vec4(0.0f);
-        _normal = glm::vec3(0.0f);
 
         for (auto &child : (*_children))
         {
             _value     += child->get_value();
             _nodeColor += child->get_color();
-            _normal    += child->get_normal();
         }
 
         // Average over 8 children
         _value     *= 0.125f;
         _nodeColor *= 0.125f;
-        // Opposing child normals can cancel out; normalizing zero yields NaN.
-        float len = glm::length(_normal);
-        _normal = len > 1e-6f ? _normal / len : glm::vec3(0.0f);
     }
 
     _isDirty = false;
@@ -81,22 +77,15 @@ glm::vec4 VoxelOctreeNode::get_color()
     return _nodeColor;
 }
 
-glm::vec3 VoxelOctreeNode::get_normal()
-{
-    update_if_dirty();
-    return _normal;
-}
-
 
 int VoxelOctreeNode::get_lod() const
 {
     return LoD;
 }
 
-void VoxelOctreeNode::set_value(float value, glm::vec3 normal)
+void VoxelOctreeNode::set_value(float value)
 {
     _value = value;
-    _normal = normal;
     _isDirty = false;
     if (_parent != nullptr)
     {
@@ -116,7 +105,7 @@ void VoxelOctreeNode::mark_materialized()
     {
         for (size_t i = 0; i < 8; ++i)
         {
-            _isMaterialized |= _children->at(i)->is_materialized() ? 1 : 0 << i;
+            _isMaterialized |= (_children->at(i)->is_materialized() ? 1 : 0) << i;
         }
     }
 
@@ -176,6 +165,14 @@ bool VoxelOctreeNode::is_enqueued() const
     return _isEnqueued;
 }
 
+// Called when a queued mesh task is dropped (node stopped being a chunk). A node
+// left flagged as enqueued blocks delete_chunk() on its parent and children
+// forever, leaving stale chunks (and their details) in the scene.
+void VoxelOctreeNode::cancel_enqueue()
+{
+    _isEnqueued = false;
+}
+
 void VoxelOctreeNode::finished_meshing_notify_parent_and_children() const
 {
     if (_parent != nullptr)
@@ -230,7 +227,7 @@ uint16_t VoxelOctreeNode::compute_boundaries(const JarVoxelTerrain &terrain) con
     return boundaries;
 }
 
-void VoxelOctreeNode::build(JarVoxelTerrain &terrain)
+void VoxelOctreeNode::build(JarVoxelTerrain &terrain, BuildContext *ctx)
 {
     LoD = terrain.desired_lod(*this);
 
@@ -239,9 +236,8 @@ void VoxelOctreeNode::build(JarVoxelTerrain &terrain)
 
     if (!_isGenerated)
     {
-        float value = terrain.get_sdf()->distance(_center);
-        glm::vec3 normal = terrain.get_sdf()->normal(_center);
-        set_value(value, normal);
+        float value = terrain.get_sdf_ptr()->distance(_center);
+        set_value(value);
         if (has_surface(terrain, value) && (_size > LoD))
         {
             subdivide(terrain.get_octree_scale());
@@ -256,15 +252,35 @@ void VoxelOctreeNode::build(JarVoxelTerrain &terrain)
         }
     }
  
-    if (is_chunk(terrain) && !is_leaf() &&
-        (_chunk == nullptr || (_chunk->get_boundaries() != compute_boundaries(terrain))))
-        queue_update(terrain);
+    if (!is_chunk(terrain))
+        _meshedEmpty = false;
+    else if (!is_leaf())
+    {
+        const uint16_t boundaries = compute_boundaries(terrain);
+        const bool knownEmpty = _meshedEmpty && _chunk == nullptr && _meshedEmptyBoundaries == boundaries;
+        if (!knownEmpty && (_chunk == nullptr || _chunk->get_boundaries() != boundaries))
+            queue_update(terrain);
+    }
 
     if (!is_leaf() && !(is_chunk(terrain) && (_chunk != nullptr)) && // || is_enqueued()
         (!is_materialized() || is_above_min_chunk(terrain)))
-        for (auto &child : *_children)
-            child->build(terrain);
+    {
+        if (ctx != nullptr && _size == ctx->forkSize)
+            for (auto &child : *_children)
+                ctx->subtrees.push_back(child.get());
+        else
+            for (auto &child : *_children)
+                child->build(terrain, ctx);
+    }
 
+    if (ctx != nullptr && _size >= ctx->forkSize)
+        ctx->deferredPost.push_back(this);
+    else
+        build_post(terrain);
+}
+
+void VoxelOctreeNode::build_post(JarVoxelTerrain &terrain)
+{
     if (!is_chunk(terrain))
         delete_chunk();
 }
@@ -289,15 +305,11 @@ void VoxelOctreeNode::modify_sdf_in_bounds(JarVoxelTerrain &terrain, const Modif
 
     LoD = terrain.desired_lod(*this);
     if (!_isGenerated)
-        set_value(terrain.get_sdf()->distance(_center), terrain.get_sdf()->normal(_center));
+        set_value(terrain.get_sdf()->distance(_center));
 
     float old_value = get_value();
-    glm::vec3 old_normal = get_normal();
     float sdf_value = settings.sdf->distance(_center - settings.position);
-    glm::vec3 sdf_normal = settings.sdf->normal(_center - settings.position);
-
-    float new_value; glm::vec3 new_normal; 
-    SDF::apply_operation(settings.operation, old_value, old_normal, sdf_value, sdf_normal, terrain.get_octree_scale(), new_value, new_normal);
+    float new_value = SDF::apply_operation(settings.operation, old_value, sdf_value, terrain.get_octree_scale());
 
     // ensure the node has children if it contains a surface
     if (has_surface(terrain, new_value)) // || has_surface(terrain, sdf_value)
@@ -306,7 +318,7 @@ void VoxelOctreeNode::modify_sdf_in_bounds(JarVoxelTerrain &terrain, const Modif
         if(settings.bounds.encloses(bounds))
             prune_children();
 
-    set_value(new_value, new_normal);
+    set_value(new_value);
     _isGenerated = true;
     // Paint the edit's material as a one-hot weight vector. Weights blend at
     // material boundaries via the parent-average and the mesher's edge
@@ -324,6 +336,7 @@ void VoxelOctreeNode::modify_sdf_in_bounds(JarVoxelTerrain &terrain, const Modif
         for (auto &child : *_children)
             child->modify_sdf_in_bounds(terrain, settings);
 
+    _meshedEmpty = false; // values changed
     if (is_chunk(terrain))
         queue_update(terrain);
     else if (_chunk != nullptr)
@@ -334,8 +347,12 @@ void VoxelOctreeNode::update_chunk(JarVoxelTerrain &terrain, ChunkMeshData *chun
 {
     _isEnqueued = false;
     finished_meshing_notify_parent_and_children();
+    _meshedEmpty = chunkMeshData == nullptr && is_chunk(terrain);
+    if (_meshedEmpty)
+        _meshedEmptyBoundaries = compute_boundaries(terrain);
     if (chunkMeshData == nullptr || !is_chunk(terrain))
     {
+        delete chunkMeshData; // owned by us until handed to a chunk
         delete_chunk();
         return;
     }

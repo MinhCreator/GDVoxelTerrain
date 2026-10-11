@@ -34,7 +34,9 @@ bool JarVoxelLoD::update_camera_position(const JarVoxelTerrain &terrain, const b
     if (player == nullptr)
         return false;
 
-    auto p = player->get_global_transform().origin - terrain.get_global_position();
+    if (!player->is_inside_tree())
+        return false;
+    auto p = terrain.to_local(player->get_global_transform().origin);
     glm::vec3 glmp = {p.x, p.y, p.z};
 
     if (force || (glm::distance(_cameraPosition, glmp) > _automaticUpdateDistance))

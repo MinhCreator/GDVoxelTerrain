@@ -22,7 +22,13 @@
 		<method name="is_building">
 			<return type="bool" />
 			<description>
-				Returns [code]true[/code] while the terrain octree is being (re)built on the background worker. Edits made while building are ignored, so scripts that edit terrain right after startup should wait until this returns [code]false[/code].
+				Returns [code]true[/code] while the background worker is rebuilding the octree or applying edits. Edits requested meanwhile are queued and applied afterwards.
+			</description>
+		</method>
+		<method name="is_meshing">
+			<return type="bool" />
+			<description>
+				Returns [code]true[/code] while chunk meshes are queued, being generated, or waiting to be applied. When both this and [method is_building] return [code]false[/code], the terrain around the player is up to date.
 			</description>
 		</method>
 		<method name="modify">

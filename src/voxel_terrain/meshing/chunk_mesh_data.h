@@ -3,6 +3,7 @@
 
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 #include <vector>
 #include <unordered_map>
@@ -24,7 +25,9 @@ class ChunkMeshData
     uint16_t boundaries;
     bool edge_chunk;
     Bounds bounds;
-    std::unordered_map<glm::ivec3, int> edgeVertices;
+    // One MultiMesh buffer (TRANSFORM_3D layout, 12 floats per instance) per
+    // terrain detail, filled on the mesh thread. Empty when the chunk shows none.
+    std::vector<PackedFloat32Array> detail_buffers;
     // ChunkDetailData chunk_detail_data;
 
     bool has_collision_mesh() const

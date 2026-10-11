@@ -39,5 +39,8 @@ public:
 
     float get_height(const Vector3 &position) const;
 
-    TypedArray<MultiMesh> generate_details(const TypedArray<JarTerrainDetail> &details, const ChunkMeshData &chunkMeshData);
+    // Thread-safe given read-only details and world: computes instance transforms
+    // as MultiMesh buffers, one per detail (see ChunkMeshData::detail_buffers).
+    std::vector<PackedFloat32Array> generate_detail_buffers(const TypedArray<JarTerrainDetail> &details,
+                                                            const ChunkMeshData &chunkMeshData);
 };

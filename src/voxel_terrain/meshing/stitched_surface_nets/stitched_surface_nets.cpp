@@ -83,11 +83,15 @@ void StitchedSurfaceNets::create_vertex(const int node_id, const std::vector<int
 
 ChunkMeshData *StitchedSurfaceNets::generate_mesh_data(const JarVoxelTerrain &terrain)
 {
+    // One scratch buffer for all neighbour queries: allocating a vector per
+    // voxel was a large share of meshing time.
+    std::vector<int> neighbours;
+    neighbours.reserve(8);
     for (size_t node_id = 0; node_id < _meshChunk.innerNodeCount; node_id++)
     {
         if (_meshChunk.vertexIndices[node_id] <= -2)
             continue;
-        auto neighbours = std::vector<int>();
+        neighbours.clear();
         glm::ivec3 grid_position = _meshChunk.positions[node_id];
 
         if (!_meshChunk.get_neighbours(grid_position, neighbours))
@@ -104,7 +108,7 @@ ChunkMeshData *StitchedSurfaceNets::generate_mesh_data(const JarVoxelTerrain &te
     {
         if (_meshChunk.vertexIndices[node_id] <= -2)
             continue;
-        auto neighbours = std::vector<int>();
+        neighbours.clear();
         glm::ivec3 grid_position = _meshChunk.positions[node_id];
 
         if (!_meshChunk.get_ring_neighbours(grid_position, neighbours))
@@ -149,7 +153,7 @@ ChunkMeshData *StitchedSurfaceNets::generate_mesh_data(const JarVoxelTerrain &te
             if (flipFace == 0 || !_meshChunk.should_have_quad(pos, i))
                 continue;
 
-            auto neighbours = std::vector<int>();
+            neighbours.clear();
             if (_meshChunk.get_unique_neighbouring_vertices(pos, StitchedMeshChunk::FaceOffsets[i], neighbours) &&
                 neighbours.size() == 4)
             {
@@ -234,12 +238,6 @@ ChunkMeshData *StitchedSurfaceNets::generate_mesh_data(const JarVoxelTerrain &te
     ChunkMeshData *output =
         new ChunkMeshData(meshData, _chunk->get_lod(), _meshChunk.is_edge_chunk(), _chunk->get_bounds(terrain.get_octree_scale()));
     output->boundaries = _meshChunk._lodH2LBoundaries | (_meshChunk._lodL2HBoundaries << 8);
-    output->edgeVertices = _ringEdgeNodes;
-    output->edgeVertices.insert(_innerEdgeNodes.begin(), _innerEdgeNodes.end());
-    for (auto &[pos, node_id] : output->edgeVertices)
-    {
-        output->edgeVertices[pos] = _meshChunk.vertexIndices[node_id];
-    }
 
     return output;
 }

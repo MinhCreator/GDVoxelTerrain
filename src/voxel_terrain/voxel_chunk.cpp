@@ -167,7 +167,7 @@ void JarVoxelChunk::set_material(Ref<ShaderMaterial> p_material)
 
 void JarVoxelChunk::update_chunk(JarVoxelTerrain &terrain, VoxelOctreeNode *node, ChunkMeshData *chunk_mesh_data)
 {
-    _chunk_mesh_data = chunk_mesh_data;
+    _chunk_mesh_data.reset(chunk_mesh_data);
     array_mesh = Ref<ArrayMesh>(Object::cast_to<ArrayMesh>(*mesh_instance->get_mesh()));
     concave_polygon_shape =
         Ref<ConcavePolygonShape3D>(Object::cast_to<ConcavePolygonShape3D>(*collision_shape->get_shape()));
@@ -197,21 +197,32 @@ void JarVoxelChunk::update_chunk(JarVoxelTerrain &terrain, VoxelOctreeNode *node
         collision_shape->set_disabled(true);
     }
 
-    //generate details
-    if(lod <= 0) {
-        ChunkDetailGenerator generator = ChunkDetailGenerator(terrain.get_world_node());
-        TypedArray<JarTerrainDetail> terrain_details = terrain.get_terrain_details();
-        TypedArray<MultiMesh> multi_meshes = generator.generate_details(terrain_details, *chunk_mesh_data);
-
-        _update_multi_mesh_instances(multi_meshes.size());
-        for (int i = 0; i < multi_meshes.size(); i++)
+    //generate details. Chunks are pooled and change LOD, so anything that should
+    //not show details must drop the instances left over from its previous use.
+    // Transforms were computed on the mesh thread; only the upload happens here.
+    const std::vector<PackedFloat32Array> &buffers = chunk_mesh_data->detail_buffers;
+    TypedArray<JarTerrainDetail> terrain_details = terrain.get_terrain_details();
+    const int detail_count = lod > 0 ? 0 : std::min<int>(buffers.size(), terrain_details.size());
+    _update_multi_mesh_instances(detail_count);
+    for (int i = 0; i < detail_count; i++)
+    {
+        MultiMeshInstance3D *multi_mesh_instance = multi_mesh_instances[i];
+        Ref<JarTerrainDetail> detail = terrain_details[i];
+        Ref<MultiMesh> multi_mesh = multi_mesh_instance->get_multimesh();
+        if (multi_mesh.is_null())
         {
-            MultiMeshInstance3D* multi_mesh_instance = multi_mesh_instances[i];
-            Ref<JarTerrainDetail> detail = terrain_details[i];
-            multi_mesh_instance->set_multimesh(multi_meshes[i]);
-            multi_mesh_instance->set_material_override(detail->get_material());
-            multi_mesh_instance->set_cast_shadows_setting(detail->get_shadows_enabled() ? MeshInstance3D::SHADOW_CASTING_SETTING_ON : MeshInstance3D::SHADOW_CASTING_SETTING_OFF);
+            multi_mesh.instantiate();
+            multi_mesh->set_transform_format(MultiMesh::TRANSFORM_3D);
+            multi_mesh_instance->set_multimesh(multi_mesh);
         }
+        multi_mesh->set_mesh(detail->get_mesh());
+        multi_mesh->set_instance_count(buffers[i].size() / 12);
+        if (!buffers[i].is_empty())
+            multi_mesh->set_buffer(buffers[i]);
+        multi_mesh_instance->set_material_override(detail->get_material());
+        multi_mesh_instance->set_cast_shadows_setting(detail->get_shadows_enabled()
+                                                          ? MeshInstance3D::SHADOW_CASTING_SETTING_ON
+                                                          : MeshInstance3D::SHADOW_CASTING_SETTING_OFF);
     }
 
     // Ref<StandardMaterial3D> stitch_material;

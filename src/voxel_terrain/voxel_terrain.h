@@ -62,6 +62,7 @@ class JarVoxelTerrain : public Node3D
     Ref<PackedScene> _chunkScene;
 
     std::atomic<bool> _isBuilding{false};
+    bool _initialBuildRequested = false; // first build waits for process(), when the player is in the tree
     int _chunkSize = 0;
     bool _cubicVoxels = false;
 
@@ -72,8 +73,10 @@ class JarVoxelTerrain : public Node3D
     std::mutex _buildMutex;
     std::condition_variable _buildCv;
     bool _buildRequested = false; // guarded by _buildMutex
+    std::vector<ModifySettings> _workerEdits; // guarded by _buildMutex; applied before any build
     bool _buildShutdown = false;  // guarded by _buildMutex
     void build_worker();
+    void build_octree(); // build worker only
     void stop_build_worker();
 
     // Chunk object pool: reuse chunk nodes instead of instantiate()/free() for the
@@ -146,6 +149,7 @@ class JarVoxelTerrain : public Node3D
 
     // properties
     bool is_building() const;
+    bool is_meshing() const;
     // MeshComputeScheduler *get_mesh_scheduler() const;
 
     // properties
@@ -156,6 +160,8 @@ class JarVoxelTerrain : public Node3D
     void set_world_node(JarWorld *worldNode);
 
     Ref<JarSignedDistanceField> get_sdf() const;
+    // Hot-path access without Ref refcounting (an atomic shared by all build threads).
+    JarSignedDistanceField *get_sdf_ptr() const { return _sdf.ptr(); }
     void set_sdf(const Ref<JarSignedDistanceField> &sdf);
 
     float get_octree_scale() const;

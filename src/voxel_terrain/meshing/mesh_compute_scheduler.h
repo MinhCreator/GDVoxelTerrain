@@ -29,6 +29,8 @@ struct ChunkComparator {
 class MeshComputeScheduler
 {
   private:
+    static constexpr int ApplyBudgetMicroseconds = 4000;
+
     ConcurrentPriorityQueue<VoxelOctreeNode*, ChunkComparator> ChunksToAdd;
     ConcurrentPriorityQueue<std::pair<VoxelOctreeNode*, ChunkMeshData*>> ChunksToProcess;
 
@@ -53,6 +55,10 @@ class MeshComputeScheduler
     // True while any mesh task holds octree node pointers: queued, running on
     // the pool, or finished but not yet applied on the main thread. The octree
     // must not be mutated (build / edit) while this is true.
+    // The pool is idle during octree builds (they only start when !is_meshing()),
+    // so the build borrows it.
+    ThreadPool &get_thread_pool() { return threadPool; }
+
     bool is_meshing()
     {
         return _activeTasks > 0 || !ChunksToAdd.empty() || !ChunksToProcess.empty();

@@ -30,8 +30,8 @@ float ChunkDetailGenerator::get_height(const Vector3 &position) const
     return position.y;
 }
 
-TypedArray<MultiMesh> ChunkDetailGenerator::generate_details(const TypedArray<JarTerrainDetail> &details,
-                                                             const ChunkMeshData &chunkMeshData)
+std::vector<PackedFloat32Array> ChunkDetailGenerator::generate_detail_buffers(
+    const TypedArray<JarTerrainDetail> &details, const ChunkMeshData &chunkMeshData)
 {
     _verts = chunkMeshData.mesh_array[static_cast<int>(Mesh::ArrayType::ARRAY_VERTEX)];
     _indices = chunkMeshData.mesh_array[static_cast<int>(Mesh::ArrayType::ARRAY_INDEX)];
@@ -41,7 +41,7 @@ TypedArray<MultiMesh> ChunkDetailGenerator::generate_details(const TypedArray<Ja
     glm::vec3 chunkCenterGLM = chunkMeshData.bounds.get_center();
     Vector3 chunkCenter = Vector3(chunkCenterGLM.x, chunkCenterGLM.y, chunkCenterGLM.z);
     if (details.size() <= 0)
-        return TypedArray<MultiMesh>();
+        return {};
 
     std::vector<std::vector<Transform3D>> ts(details.size());
     for (size_t i = 0; i < _indices.size(); i += 3)
@@ -106,24 +106,24 @@ TypedArray<MultiMesh> ChunkDetailGenerator::generate_details(const TypedArray<Ja
         }
     }
 
-    TypedArray<MultiMesh> meshes;
+    std::vector<PackedFloat32Array> buffers(details.size());
     for (size_t d = 0; d < details.size(); d++)
     {
-        Ref<JarTerrainDetail> detail = details[d];
-        // for (const auto &lod : detail->Visuals) {
-        Ref<MultiMesh> mesh = memnew(MultiMesh());
-        mesh->set_transform_format(MultiMesh::TRANSFORM_3D);
-        mesh->set_mesh(detail->get_mesh());
-        mesh->set_instance_count(ts[d].size());
-
-        for (size_t i = 0; i < ts[d].size(); i++)
+        PackedFloat32Array &buffer = buffers[d];
+        buffer.resize(ts[d].size() * 12);
+        float *w = buffer.ptrw();
+        for (const Transform3D &t : ts[d])
         {
-            mesh->set_instance_transform(i, ts[d][i]);
+            // MultiMesh TRANSFORM_3D layout: basis rows interleaved with origin.
+            for (int row = 0; row < 3; row++)
+            {
+                *w++ = t.basis.rows[row].x;
+                *w++ = t.basis.rows[row].y;
+                *w++ = t.basis.rows[row].z;
+                *w++ = t.origin[row];
+            }
         }
-
-        meshes.append(mesh);
-        // }
     }
 
-    return meshes;
+    return buffers;
 }

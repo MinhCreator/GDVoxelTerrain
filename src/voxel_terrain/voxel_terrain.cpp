@@ -106,6 +106,7 @@ void JarVoxelTerrain::_bind_methods()
                          &JarVoxelTerrain::spawn_debug_spheres_in_bounds);
     ClassDB::bind_method(D_METHOD("force_update_lod"), &JarVoxelTerrain::force_update_lod);
     ClassDB::bind_method(D_METHOD("is_building"), &JarVoxelTerrain::is_building);
+    ClassDB::bind_method(D_METHOD("is_meshing"), &JarVoxelTerrain::is_meshing);
 }
 
 JarVoxelTerrain::JarVoxelTerrain() : _octreeScale(1.0f), _size(14), _playerNode(nullptr)
@@ -128,19 +129,48 @@ JarVoxelTerrain::~JarVoxelTerrain()
 // fresh detached thread per build.
 void JarVoxelTerrain::build_worker()
 {
+    std::vector<ModifySettings> edits;
     for (;;)
     {
+        bool rebuild;
         {
             std::unique_lock<std::mutex> lock(_buildMutex);
-            _buildCv.wait(lock, [this] { return _buildRequested || _buildShutdown; });
+            _buildCv.wait(lock, [this] { return _buildRequested || !_workerEdits.empty() || _buildShutdown; });
             if (_buildShutdown)
                 return;
+            rebuild = _buildRequested;
             _buildRequested = false;
+            edits.swap(_workerEdits);
         }
         if (_voxelRoot)
-            _voxelRoot->build(*this);
+        {
+            for (const ModifySettings &settings : edits)
+                _voxelRoot->modify_sdf_in_bounds(*this, settings);
+            if (rebuild)
+                build_octree();
+            // Settle averaged inner-node values now, so the mesh threads that run
+            // next never lazily write to shared nodes.
+            _voxelRoot->update_if_dirty();
+        }
+        edits.clear();
         _isBuilding = false;
     }
+}
+
+void JarVoxelTerrain::build_octree()
+{
+    // The top of the tree is walked on this thread; subtrees below forkSize are
+    // independent and built in parallel on the (idle) meshing pool.
+    VoxelOctreeNode::BuildContext ctx;
+    ctx.forkSize = _minChunkSize + 4;
+    _voxelRoot->build(*this, &ctx);
+    _meshComputeScheduler->get_thread_pool().parallel_for(
+        ctx.subtrees.size(), [this, &ctx](size_t i) {
+            ctx.subtrees[i]->build(*this);
+            ctx.subtrees[i]->update_if_dirty(); // settle the subtree while it is hot in cache
+        });
+    for (VoxelOctreeNode *node : ctx.deferredPost)
+        node->build_post(*this);
 }
 
 // Signal the worker to stop and JOIN it, so no build is in flight once the
@@ -270,6 +300,11 @@ void JarVoxelTerrain::set_world_node(JarWorld *worldNode)
 bool JarVoxelTerrain::is_building() const
 {
     return _isBuilding;
+}
+
+bool JarVoxelTerrain::is_meshing() const
+{
+    return _meshComputeScheduler && _meshComputeScheduler->is_meshing();
 }
 
 Ref<JarSignedDistanceField> JarVoxelTerrain::get_sdf() const
@@ -464,7 +499,9 @@ void JarVoxelTerrain::initialize()
     //_populationRoot = memnew(PopulationOctreeNode(_size));
     if (!_buildThread.joinable())
         _buildThread = std::thread([this] { build_worker(); });
-    build();
+    // The first build happens in process(): the player node may not have entered
+    // the tree yet, and building around the default camera position (the terrain
+    // origin) wastes a full build + mesh pass that is thrown away immediately.
 }
 
 void JarVoxelTerrain::process()
@@ -478,6 +515,14 @@ void JarVoxelTerrain::process()
         return; // building, or initialize() failed (missing chunk scene / sdf)
     process_pool(); // reclaim chunks the last build released, ready for reuse
     float delta = get_process_delta_time();
+
+    if (!_initialBuildRequested)
+    {
+        _initialBuildRequested = true;
+        _voxelLod.update_camera_position(*this, true);
+        build();
+        return;
+    }
 
     // Edits and LOD builds mutate the octree (including freeing nodes), so they
     // may only run once no mesh task holds node pointers. Edits take priority
@@ -588,14 +633,20 @@ void JarVoxelTerrain::generate_epsilons()
 
 void JarVoxelTerrain::process_modify_queue()
 {
-    // Main thread only; process() guarantees no build or mesh task is running.
-    while (!_modifySettingsQueue.empty())
+    // Edits run on the build worker, like builds, so a large edit never stalls
+    // a frame. process() only calls this when no mesh task holds node pointers.
+    bool expected = false;
+    if (!_voxelRoot || !_isBuilding.compare_exchange_strong(expected, true))
+        return;
     {
-        ModifySettings settings = std::move(_modifySettingsQueue.front());
-        _modifySettingsQueue.pop();
-        _voxelRoot->modify_sdf_in_bounds(*this, settings);
-        //_populationRoot->remove_population(settings);
+        std::lock_guard<std::mutex> lock(_buildMutex);
+        while (!_modifySettingsQueue.empty())
+        {
+            _workerEdits.push_back(std::move(_modifySettingsQueue.front()));
+            _modifySettingsQueue.pop();
+        }
     }
+    _buildCv.notify_one();
 }
 
 // void JarVoxelTerrain::process_delete_chunk_queue()

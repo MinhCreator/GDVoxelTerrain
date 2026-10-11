@@ -4,6 +4,8 @@
 // #include "adaptive_surface_nets/adaptive_surface_nets.h"
 #include "stitched_surface_nets/stitched_surface_nets.h"
 #include "voxel_octree_node.h"
+#include "chunk_detail_generator.h"
+#include <chrono>
 
 MeshComputeScheduler::MeshComputeScheduler(int maxConcurrentTasks)
     : _maxConcurrentTasks(maxConcurrentTasks), _activeTasks(0), _totalTris(0), _prevTris(0),
@@ -23,14 +25,17 @@ void MeshComputeScheduler::process(JarVoxelTerrain &terrain)
     {
         process_queue(terrain);
     }
-    while (!ChunksToProcess.empty())
+    // Applying a mesh (ArrayMesh upload, chunk acquire, details) runs on the main
+    // thread. Spread it over frames: applying thousands at once after a build
+    // stalled a frame for 200+ ms.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::microseconds(ApplyBudgetMicroseconds);
+    std::pair<VoxelOctreeNode *, ChunkMeshData *> tuple;
+    while (ChunksToProcess.try_pop(tuple))
     {
-        std::pair<VoxelOctreeNode *, ChunkMeshData *> tuple;
-        if (ChunksToProcess.try_pop(tuple))
-        {
-            auto [node, chunkMeshData] = tuple;
-            node->update_chunk(terrain, chunkMeshData);
-        }
+        auto [node, chunkMeshData] = tuple;
+        node->update_chunk(terrain, chunkMeshData);
+        if (std::chrono::steady_clock::now() >= deadline)
+            break;
     }
 }
 
@@ -41,7 +46,10 @@ void MeshComputeScheduler::process_queue(JarVoxelTerrain &terrain)
         VoxelOctreeNode *chunk;
         if (ChunksToAdd.try_pop(chunk))
         {
-            run_task(terrain, *chunk);
+            if (chunk->is_chunk(terrain))
+                run_task(terrain, *chunk);
+            else
+                chunk->cancel_enqueue();
         }
         else
             return;
@@ -50,13 +58,16 @@ void MeshComputeScheduler::process_queue(JarVoxelTerrain &terrain)
 
 void MeshComputeScheduler::run_task(const JarVoxelTerrain &terrain, VoxelOctreeNode &chunk)
 {
-    if (!chunk.is_chunk(terrain))
-        return;
     _activeTasks++;
     threadPool.enqueue([this, &terrain, &chunk]() {
         // auto meshCompute = AdaptiveSurfaceNets(terrain, chunk);
         auto meshCompute = StitchedSurfaceNets(terrain, chunk);
         ChunkMeshData *chunkMeshData = meshCompute.generate_mesh_data(terrain);
+        if (chunkMeshData != nullptr && chunkMeshData->lod <= 0)
+        {
+            ChunkDetailGenerator generator(terrain.get_world_node());
+            chunkMeshData->detail_buffers = generator.generate_detail_buffers(terrain.get_terrain_details(), *chunkMeshData);
+        }
         ChunksToProcess.push(std::make_pair(&(chunk), chunkMeshData));
         _activeTasks--; // after the push, so is_meshing() never sees a gap
     });
