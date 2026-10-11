@@ -48,16 +48,17 @@ class ChunkMeshData
     //     chunk_detail_data = ChunkDetailData(this);
     // }
 
-    PackedVector3Array create_collision_mesh() const {
-        PackedVector3Array verts = mesh_array[Mesh::ARRAY_VERTEX];
-        PackedInt32Array indices = mesh_array[Mesh::ARRAY_INDEX];
-        PackedVector3Array collision_mesh;
-
-        for (size_t i = 0; i < indices.size(); i++) {
-            collision_mesh.push_back(verts[indices[i]]);
-        }
-
-        return collision_mesh;
+    // Fills collision_mesh (one vertex per triangle corner, as set_faces expects).
+    // Called on the mesh thread so only the physics upload is left for the main thread.
+    void build_collision_mesh() {
+        const PackedVector3Array verts = mesh_array[Mesh::ARRAY_VERTEX];
+        const PackedInt32Array indices = mesh_array[Mesh::ARRAY_INDEX];
+        collision_mesh.resize(indices.size());
+        Vector3 *w = collision_mesh.ptrw();
+        const Vector3 *v = verts.ptr();
+        const int32_t *idx = indices.ptr();
+        for (int64_t i = 0; i < indices.size(); i++)
+            w[i] = v[idx[i]];
     }
 
     // bool should_have_grass_texture() const {

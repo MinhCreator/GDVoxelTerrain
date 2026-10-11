@@ -61,7 +61,8 @@ See `demo/demo/op_demo.tscn` + `demo/demo/op_carve.tres` for a worked example (a
 ### Performance tips
 
 - `performance_collider_distance` — when `> 0`, physics colliders are only generated for chunks within this distance of the camera. Collider generation is one of the most expensive parts of chunk updates, so setting this to slightly more than your physics interaction range is a large win.
-- `performance_updated_colliders_per_second` — throttles collider updates per frame.
+- `performance_collider_budget_ms` — main-thread time per frame spent uploading colliders (nearest first). Raise it to get collision sooner, lower it for steadier frame times.
+- `performance_updated_colliders_per_second` — optional hard cap on collider uploads per second; `0` (default) means only the time budget applies.
 - Chunks are recycled through an internal object pool, so heavy LOD churn does not repeatedly allocate/free thousands of nodes.
 
 ## Contributing

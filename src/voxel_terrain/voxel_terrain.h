@@ -51,7 +51,7 @@ class JarVoxelTerrain : public Node3D
     };
 
     std::queue<ModifySettings> _modifySettingsQueue;
-    std::queue<JarVoxelChunk *> _updateChunkCollidersQueue;
+    std::vector<JarVoxelChunk *> _pendingColliders; // main thread; see process_chunk_queue()
     // std::queue<VoxelOctreeNode*> _deleteChunkQueue;
 
     // Exported variables
@@ -89,12 +89,13 @@ class JarVoxelTerrain : public Node3D
 
     // PERFORMANCE
     int _maxConcurrentTasks = 12;
-    int _updatedCollidersPerSecond = 128;
+    int _updatedCollidersPerSecond = 0; // 0 = uncapped (time budget only)
     // Only generate physics colliders for chunks within this distance of the
     // camera (0 = unlimited = original behaviour). Colliders are already LOD-
     // limited; this further culls the ones the player can never touch, which is
     // the expensive part. Set it a bit larger than lod_automatic_update_distance.
     float _colliderDistance = 0.0f;
+    float _colliderBudgetMs = 2.0f;
 
     // LOD
     JarVoxelLoD _voxelLod;
@@ -189,6 +190,8 @@ class JarVoxelTerrain : public Node3D
     void set_updated_colliders_per_second(int value);
 
     float get_collider_distance() const;
+    float get_collider_budget_ms() const;
+    void set_collider_budget_ms(float value);
     void set_collider_distance(float value);
     // True if a chunk at `pos` should get a collider under the distance cull.
     bool is_in_collider_range(const glm::vec3 &pos) const;

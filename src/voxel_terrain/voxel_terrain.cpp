@@ -3,6 +3,8 @@
 #include "plane_sdf.h"
 #include "sphere_sdf.h"
 #include "voxel_chunk.h"
+#include <chrono>
+#include <limits>
 
 void JarVoxelTerrain::_bind_methods()
 {
@@ -55,6 +57,11 @@ void JarVoxelTerrain::_bind_methods()
                          &JarVoxelTerrain::set_updated_colliders_per_second);
     ADD_PROPERTY(PropertyInfo(Variant::INT, "performance_updated_colliders_per_second"),
                  "set_updated_colliders_per_second", "get_updated_colliders_per_second");
+
+    ClassDB::bind_method(D_METHOD("get_collider_budget_ms"), &JarVoxelTerrain::get_collider_budget_ms);
+    ClassDB::bind_method(D_METHOD("set_collider_budget_ms", "value"), &JarVoxelTerrain::set_collider_budget_ms);
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "performance_collider_budget_ms", PROPERTY_HINT_RANGE, "0,16,0.1"),
+                 "set_collider_budget_ms", "get_collider_budget_ms");
 
     ClassDB::bind_method(D_METHOD("get_collider_distance"), &JarVoxelTerrain::get_collider_distance);
     ClassDB::bind_method(D_METHOD("set_collider_distance", "value"), &JarVoxelTerrain::set_collider_distance);
@@ -267,9 +274,10 @@ void JarVoxelTerrain::sphere_edit(const Vector3 &position, const float radius, b
 
 void JarVoxelTerrain::enqueue_chunk_collider(JarVoxelChunk *chunk)
 {
-    if (chunk == nullptr)
+    if (chunk == nullptr || chunk->collider_queued)
         return;
-    _updateChunkCollidersQueue.push(chunk);
+    chunk->collider_queued = true;
+    _pendingColliders.push_back(chunk);
 }
 
 void JarVoxelTerrain::enqueue_chunk_update(VoxelOctreeNode &node)
@@ -400,6 +408,14 @@ float JarVoxelTerrain::get_collider_distance() const
 void JarVoxelTerrain::set_collider_distance(float value)
 {
     _colliderDistance = value;
+}
+float JarVoxelTerrain::get_collider_budget_ms() const
+{
+    return _colliderBudgetMs;
+}
+void JarVoxelTerrain::set_collider_budget_ms(float value)
+{
+    _colliderBudgetMs = std::max(0.0f, value);
 }
 bool JarVoxelTerrain::is_in_collider_range(const glm::vec3 &pos) const
 {
@@ -592,24 +608,48 @@ void JarVoxelTerrain::build()
 
 void JarVoxelTerrain::process_chunk_queue(float delta)
 {
-    if (_updateChunkCollidersQueue.empty())
+    if (_pendingColliders.empty())
         return;
 
-    int rate = std::max(1, static_cast<int>(std::ceil(_updatedCollidersPerSecond * delta)));
-    int target = std::min(rate, (int)_updateChunkCollidersQueue.size());
+    // Uploading a collider (building the physics BVH) must happen on the main
+    // thread, so spread it over frames: nearest chunks first, so the ground under
+    // the player is solid soonest, until the per-frame time budget is used up.
+    // performance_updated_colliders_per_second optionally caps it further (0 = off).
+    const glm::vec3 camera = _voxelLod.get_camera_position();
+    std::vector<std::pair<float, JarVoxelChunk *>> byDistance;
+    byDistance.reserve(_pendingColliders.size());
+    for (JarVoxelChunk *chunk : _pendingColliders)
+    {
+        const Vector3 p = chunk->get_position();
+        byDistance.emplace_back(glm::distance(glm::vec3(p.x, p.y, p.z), camera), chunk);
+    }
+    std::sort(byDistance.begin(), byDistance.end(),
+              [](const auto &a, const auto &b) { return a.first > b.first; }); // nearest last
 
+    const int cap = _updatedCollidersPerSecond > 0
+                        ? std::max(1, static_cast<int>(std::ceil(_updatedCollidersPerSecond * delta)))
+                        : std::numeric_limits<int>::max();
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::microseconds(static_cast<int64_t>(_colliderBudgetMs * 1000.0f));
     int processed = 0;
-    while (processed < target && !_updateChunkCollidersQueue.empty())
+    while (!byDistance.empty() && processed < cap)
     {
         // Chunks (not octree nodes) are queued: nodes can be freed by edits while
         // queued, whereas chunks are pooled and live as long as the terrain.
-        JarVoxelChunk *chunk = _updateChunkCollidersQueue.front();
-        _updateChunkCollidersQueue.pop();
-        if (chunk == nullptr || !chunk->is_visible())
+        JarVoxelChunk *chunk = byDistance.back().second;
+        byDistance.pop_back();
+        chunk->collider_queued = false;
+        if (!chunk->is_visible())
             continue; // parked in the pool since it was queued
         chunk->update_collision_mesh();
         processed++;
+        if (std::chrono::steady_clock::now() >= deadline)
+            break;
     }
+
+    _pendingColliders.clear();
+    for (const auto &entry : byDistance)
+        _pendingColliders.push_back(entry.second);
 }
 
 void JarVoxelTerrain::generate_epsilons()

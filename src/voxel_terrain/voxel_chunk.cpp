@@ -248,8 +248,12 @@ void JarVoxelChunk::update_chunk(JarVoxelTerrain &terrain, VoxelOctreeNode *node
 void JarVoxelChunk::update_collision_mesh()
 {
     // if(is_queued_for_deletion()) return;
+    if (!_chunk_mesh_data)
+        return;
+    if (_chunk_mesh_data->collision_mesh.is_empty())
+        _chunk_mesh_data->build_collision_mesh(); // LOD above MaxCollisionLod: not prebuilt
     collision_shape->set_disabled(false);
-    concave_polygon_shape->set_faces(_chunk_mesh_data->create_collision_mesh());
+    concave_polygon_shape->set_faces(_chunk_mesh_data->collision_mesh);
 }
 
 void JarVoxelChunk::delete_chunk()

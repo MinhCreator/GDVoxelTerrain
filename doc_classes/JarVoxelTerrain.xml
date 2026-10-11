@@ -91,14 +91,17 @@
 		<member name="octree_scale" type="float" setter="set_octree_scale" getter="get_octree_scale" default="1.0">
 			Scaling factor for the octree used in terrain chunk management and LOD computation.
 		</member>
+		<member name="performance_collider_budget_ms" type="float" setter="set_collider_budget_ms" getter="get_collider_budget_ms" default="2.0">
+			Main-thread time per frame, in milliseconds, spent uploading chunk colliders to the physics engine. Colliders nearest the player are uploaded first. Higher values make collision available sooner after the terrain changes, at the cost of frame time.
+		</member>
 		<member name="performance_collider_distance" type="float" setter="set_collider_distance" getter="get_collider_distance" default="0.0">
 			When greater than [code]0.0[/code], physics colliders are only generated for chunks within this distance of the camera, on top of the usual LOD-based collider rules. Since collider generation is one of the most expensive parts of chunk updates, this can be a large performance win. Set it comfortably larger than the range at which physics interactions are needed. [code]0.0[/code] disables the distance cull (original behaviour).
 		</member>
 		<member name="performance_max_concurrent_tasks" type="int" setter="set_max_concurrent_tasks" getter="get_max_concurrent_tasks" default="12">
 			Limits how many concurrent tasks (e.g. chunk loading, LOD updates) can run simultaneously. Helps manage CPU load.
 		</member>
-		<member name="performance_updated_colliders_per_second" type="int" setter="set_updated_colliders_per_second" getter="get_updated_colliders_per_second" default="128">
-			Limits the number of colliders that can be updated per second to balance performance.
+		<member name="performance_updated_colliders_per_second" type="int" setter="set_updated_colliders_per_second" getter="get_updated_colliders_per_second" default="0">
+			Optional hard cap on how many chunk colliders are uploaded per second. [code]0[/code] means no cap: uploads are limited only by [member performance_collider_budget_ms].
 		</member>
 		<member name="player_node" type="Node3D" setter="set_player_node" getter="get_player_node">
 			Player node to track for position, if [code]lod_automatic_update[/code] is set to [code]True[/code].

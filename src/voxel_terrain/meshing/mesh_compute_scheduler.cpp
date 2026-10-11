@@ -63,6 +63,8 @@ void MeshComputeScheduler::run_task(const JarVoxelTerrain &terrain, VoxelOctreeN
         // auto meshCompute = AdaptiveSurfaceNets(terrain, chunk);
         auto meshCompute = StitchedSurfaceNets(terrain, chunk);
         ChunkMeshData *chunkMeshData = meshCompute.generate_mesh_data(terrain);
+        if (chunkMeshData != nullptr && chunkMeshData->lod <= ChunkMeshData::MaxCollisionLod)
+            chunkMeshData->build_collision_mesh();
         if (chunkMeshData != nullptr && chunkMeshData->lod <= 0)
         {
             ChunkDetailGenerator generator(terrain.get_world_node());

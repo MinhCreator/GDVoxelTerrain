@@ -89,6 +89,7 @@ class JarVoxelChunk : public Node3D
     // Takes ownership of chunk_mesh_data.
     void update_chunk(JarVoxelTerrain &terrain, VoxelOctreeNode *node, ChunkMeshData *chunk_mesh_data);
     void update_collision_mesh();
+    bool collider_queued = false; // owned by JarVoxelTerrain's collider queue
     void delete_chunk();
 
     // Object-pool support: instead of freeing a chunk, park it (hidden + collision
