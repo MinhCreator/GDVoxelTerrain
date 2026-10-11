@@ -50,9 +50,12 @@ class MeshComputeScheduler
     void process(JarVoxelTerrain &terrain);
     void clear_queue();
 
+    // True while any mesh task holds octree node pointers: queued, running on
+    // the pool, or finished but not yet applied on the main thread. The octree
+    // must not be mutated (build / edit) while this is true.
     bool is_meshing()
     {
-        return !ChunksToAdd.empty();
+        return _activeTasks > 0 || !ChunksToAdd.empty() || !ChunksToProcess.empty();
     }
 };
 

@@ -52,12 +52,13 @@ void MeshComputeScheduler::run_task(const JarVoxelTerrain &terrain, VoxelOctreeN
 {
     if (!chunk.is_chunk(terrain))
         return;
+    _activeTasks++;
     threadPool.enqueue([this, &terrain, &chunk]() {
         // auto meshCompute = AdaptiveSurfaceNets(terrain, chunk);
         auto meshCompute = StitchedSurfaceNets(terrain, chunk);
         ChunkMeshData *chunkMeshData = meshCompute.generate_mesh_data(terrain);
         ChunksToProcess.push(std::make_pair(&(chunk), chunkMeshData));
-        _activeTasks--;
+        _activeTasks--; // after the push, so is_meshing() never sees a gap
     });
 }
 

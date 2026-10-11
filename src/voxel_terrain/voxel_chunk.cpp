@@ -184,13 +184,13 @@ void JarVoxelChunk::update_chunk(JarVoxelTerrain &terrain, VoxelOctreeNode *node
     array_mesh->clear_surfaces();
     array_mesh->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, chunk_mesh_data->mesh_array);
 
-    bool generate_collider = lod <= collider_lod_threshold;
+    bool generate_collider = lod <= collider_lod_threshold && terrain.is_in_collider_range(position);
 
     if (generate_collider)
     {
         // collision_shape->set_disabled(!chunk_mesh_data->has_collision_mesh());
         // concave_polygon_shape->set_faces(chunk_mesh_data.create_collision_mesh());
-        terrain.enqueue_chunk_collider(node);
+        terrain.enqueue_chunk_collider(this);
     }
     else
     {
